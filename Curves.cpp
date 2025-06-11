@@ -33,8 +33,8 @@ private:
     VertexBuffer<Vertex>* curvesBuffer; //vbuffer para curvas
     VertexBuffer<Vertex>* controlPointsBuffer; //vbuffer para pontos de controle
     VertexBuffer<Vertex>* supportLineBuffer; //vbuffer para linhas de suporte
-    static const uint MaxSize = 4000;//quantidade máxima para vértices das curvas
-    static const uint LineSegs = 50; //quantidade de vértices para cada curva
+    static const uint MaxSize = 5050;//quantidade máxima para vértices das curvas
+    static const uint LineSegs = 100; //quantidade de vértices para cada curva
     Vertex vertices[MaxSize];
     Vertex clicks[4]; //array para guardar os quatro pontos das curvas
     Vertex curve[LineSegs + 1];//array para guardar a curva atual
@@ -112,132 +112,134 @@ void Curves::Update()
         Load();
     }
 
+    if (count < MaxSize) {
+        float cx = float(window->CenterX());
+        float cy = float(window->CenterY());
+        float mx = float(input->MouseX());
+        float my = float(input->MouseY());
 
-    float cx = float(window->CenterX());
-    float cy = float(window->CenterY());
-    float mx = float(input->MouseX());
-    float my = float(input->MouseY());
+        // converte as coordenadas da tela para a faixa -1.0 a 1.0
+        // cy e my foram invertidos para levar em consideração que 
+        // o eixo y da tela cresce na direção oposta do cartesiano
+        float x = (mx - cx) / cx;
+        float y = (cy - my) / cy;
 
-    // converte as coordenadas da tela para a faixa -1.0 a 1.0
-    // cy e my foram invertidos para levar em consideração que 
-    // o eixo y da tela cresce na direção oposta do cartesiano
-    float x = (mx - cx) / cx;
-    float y = (cy - my) / cy;
 
-    
-    // cria vértices com o botão do mouse
-    if (input->KeyPress(VK_LBUTTON))
-    {
+        // cria vértices com o botão do mouse
+        if (input->KeyPress(VK_LBUTTON))
+        {
 
-        float s = 0.01f; 
+            float s = 0.01f;
 
-        // apenas 3 pontos de controle na tela por vez
-        if (cpCount > 17) {
-            cpCount = 0;
+            // apenas 3 pontos de controle na tela por vez
+            if (cpCount > 17) {
+                cpCount = 0;
+            }
+            // cada ponto de controle é um quadrado feito com dois triângulos
+            controlPoints[cpCount] = { XMFLOAT3(x + s, y + s, 0.0f), XMFLOAT4(Colors::Red) };
+            controlPoints[cpCount + 1] = { XMFLOAT3(x + s, y - s, 0.0f), XMFLOAT4(Colors::Red) };
+            controlPoints[cpCount + 2] = { XMFLOAT3(x - s, y - s, 0.0f), XMFLOAT4(Colors::Red) };
+            controlPoints[cpCount + 3] = { XMFLOAT3(x - s, y - s, 0.0f), XMFLOAT4(Colors::Red) };
+            controlPoints[cpCount + 4] = { XMFLOAT3(x - s, y + s, 0.0f), XMFLOAT4(Colors::Red) };
+            controlPoints[cpCount + 5] = { XMFLOAT3(x + s, y + s, 0.0f), XMFLOAT4(Colors::Red) };
+            cpCount += 6;
+
+
+            graphics->PrepareGpu(pipelineStateLine);
+            controlPointsBuffer->Copy(controlPoints, cpCount);
+            graphics->SendToGpu();
+
+            //armazena os pontos para a curva
+            clicks[click] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::Yellow) };
+
+            click++;
+            //no quarto clique desenha a curva
+            if (click == 4) {
+
+                for (int i = 0; i <= LineSegs; i++) {
+                    float t = 1.0f / LineSegs * i;
+                    x = pow(1.0f - t, 3) * clicks[click - 4].Pos.x
+                        + 3 * t * pow(1.0f - t, 2) * clicks[click - 3].Pos.x
+                        + 3 * t * t * (1.0f - t) * clicks[click - 2].Pos.x
+                        + t * t * t * clicks[click - 1].Pos.x;
+                    y = pow(1.0f - t, 3) * clicks[click - 4].Pos.y
+                        + 3 * t * pow(1.0f - t, 2) * clicks[click - 3].Pos.y
+                        + 3 * t * t * (1.0f - t) * clicks[click - 2].Pos.y
+                        + t * t * t * clicks[click - 1].Pos.y;
+                    curve[i] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::White) };
+                }
+                for (int i = 0; i <= LineSegs; i++) {
+                    vertices[count] = curve[i];
+                    count++;
+                }
+                //depois da primeira curva o primeiro ponto da próxima curva será o ultimo ponto da curva anterior
+                clicks[0] = clicks[3];
+                click = 1;
+            }
+
+            // copia vértices para o buffer da GPU usando o buffer de Upload
+            graphics->PrepareGpu(pipelineStateLine);
+            curvesBuffer->Copy(vertices, count);
+            graphics->SendToGpu();
+
+            Display();
+
         }
-        // cada ponto de controle é um quadrado feito com dois triângulos
-        controlPoints[cpCount] = { XMFLOAT3(x + s, y + s, 0.0f), XMFLOAT4(Colors::Red) }; 
-        controlPoints[cpCount+1] = { XMFLOAT3(x + s, y - s, 0.0f), XMFLOAT4(Colors::Red) }; 
-        controlPoints[cpCount+2] = { XMFLOAT3(x - s, y - s, 0.0f), XMFLOAT4(Colors::Red) }; 
-        controlPoints[cpCount+3] = { XMFLOAT3(x - s, y - s, 0.0f), XMFLOAT4(Colors::Red) };
-        controlPoints[cpCount+4] = { XMFLOAT3(x - s, y + s, 0.0f), XMFLOAT4(Colors::Red) };
-        controlPoints[cpCount+5] = { XMFLOAT3(x + s, y + s, 0.0f), XMFLOAT4(Colors::Red) };
-        cpCount +=6;
+        //no terceiro clique mostra o preview da curva a ser desenhada
+        if (click == 3) {
 
-        
-        graphics->PrepareGpu(pipelineStateLine);
-        controlPointsBuffer->Copy(controlPoints, cpCount);
-        graphics->SendToGpu();
-        
-        //armazena os pontos para a curva
-        clicks[click] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::Yellow) };
-       
-        click++;
-        //no quarto clique desenha a curva
-        if (click == 4) {
-            
+
             for (int i = 0; i <= LineSegs; i++) {
                 float t = 1.0f / LineSegs * i;
-                x = pow(1.0f - t, 3) * clicks[click-4].Pos.x
-                    + 3 * t * pow(1.0f - t, 2) * clicks[click-3].Pos.x
-                    + 3 * t * t * (1.0f - t) * clicks[click-2].Pos.x
-                    + t * t * t * clicks[click-1].Pos.x;
-                y = pow(1.0f - t, 3) * clicks[click-4].Pos.y
-                    + 3 * t * pow(1.0f - t, 2) * clicks[click-3].Pos.y
-                    + 3 * t * t * (1.0f - t) * clicks[click-2].Pos.y
-                    + t * t * t * clicks[click-1].Pos.y;
-                curve[i] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::White)};
+                float x1 = pow(1.0f - t, 3) * clicks[click - 3].Pos.x
+                    + 3 * t * pow(1.0f - t, 2) * clicks[click - 2].Pos.x
+                    + 3 * t * t * (1.0f - t) * clicks[click - 1].Pos.x
+                    + t * t * t * x;
+                float y1 = pow(1.0f - t, 3) * clicks[click - 3].Pos.y
+                    + 3 * t * pow(1.0f - t, 2) * clicks[click - 2].Pos.y
+                    + 3 * t * t * (1.0f - t) * clicks[click - 1].Pos.y
+                    + t * t * t * y;
+                curve[i] = { XMFLOAT3(x1, y1, 0.0f), XMFLOAT4(Colors::White) };
             }
             for (int i = 0; i <= LineSegs; i++) {
                 vertices[count] = curve[i];
                 count++;
             }
-            //depois da primeira curva o primeiro ponto da próxima curva será o ultimo ponto da curva anterior
-            clicks[0] = clicks[3];
-            click = 1;
-        }
-     
-        // copia vértices para o buffer da GPU usando o buffer de Upload
-        graphics->PrepareGpu(pipelineStateLine);
-        curvesBuffer->Copy(vertices, count);
-        graphics->SendToGpu();
+            graphics->PrepareGpu(pipelineStateLine);
+            curvesBuffer->Copy(vertices, count);
+            graphics->SendToGpu();
 
-        Display();
-      
+
+            Display();
+            count -= LineSegs + 1;
+        }
+
+        //desenha a linha de suporte
+        if (click > 0) {
+
+            if (click == 1) {
+                supportLine[0] = clicks[0];
+                supportLine[1] = { XMFLOAT3(x,y,0.0f), XMFLOAT4(Colors::Yellow) };
+            }
+            else if (click == 2) {
+                supportLine[0] = clicks[0];
+                supportLine[1] = clicks[1];
+                supportLine[2] = { XMFLOAT3(x,y,0.0f), XMFLOAT4(Colors::Yellow) };
+            }
+            else {
+                supportLine[0] = clicks[0];
+                supportLine[1] = clicks[1];
+                supportLine[2] = clicks[2];
+                supportLine[3] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::Yellow) };
+            }
+
+            graphics->PrepareGpu(pipelineStateLine);
+            supportLineBuffer->Copy(supportLine, click + 1);
+            graphics->SendToGpu();
+            Display();
+        }
     }
-    //no terceiro clique mostra o preview da curva a ser desenhada
-    if (click == 3) {
-
-
-        for (int i = 0; i <= LineSegs; i++) {
-            float t = 1.0f / LineSegs * i;
-            float x1 = pow(1.0f - t, 3) * clicks[click - 3].Pos.x
-                + 3 * t * pow(1.0f - t, 2) * clicks[click - 2].Pos.x
-                + 3 * t * t * (1.0f - t) * clicks[click - 1].Pos.x
-                + t * t * t * x;
-            float y1 = pow(1.0f - t, 3) * clicks[click - 3].Pos.y
-                + 3 * t * pow(1.0f - t, 2) * clicks[click - 2].Pos.y
-                + 3 * t * t * (1.0f - t) * clicks[click - 1].Pos.y
-                + t * t * t * y;
-            curve[i] = { XMFLOAT3(x1, y1, 0.0f), XMFLOAT4(Colors::White) };
-        }
-        for (int i = 0; i <= LineSegs; i++) {
-            vertices[count] = curve[i];
-            count++;
-        }
-        graphics->PrepareGpu(pipelineStateLine);
-        curvesBuffer->Copy(vertices, count);
-        graphics->SendToGpu();
-
-        
-        Display();
-        count -= LineSegs+1;
-    }
-
-    //desenha a linha de suporte
-    if (click > 0 ) {
-
-        if (click == 1) {
-            supportLine[0] = clicks[0];
-            supportLine[1] = { XMFLOAT3(x,y,0.0f), XMFLOAT4(Colors::Yellow) };
-        }
-        else if (click == 2) {
-            supportLine[0] = clicks[0];
-            supportLine[1] = clicks[1];
-            supportLine[2] = { XMFLOAT3(x,y,0.0f), XMFLOAT4(Colors::Yellow) };
-        }
-        else {
-            supportLine[0] = clicks[0];
-            supportLine[1] = clicks[1];
-            supportLine[2] = clicks[2];
-            supportLine[3] = { XMFLOAT3(x, y, 0.0f), XMFLOAT4(Colors::Yellow) };
-        }
-        
-        graphics->PrepareGpu(pipelineStateLine);
-        supportLineBuffer->Copy(supportLine, click+1);
-        graphics->SendToGpu();
-        Display();
-    }
+    
 }
 
 // ------------------------------------------------------------------------------
